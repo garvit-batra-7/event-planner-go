@@ -6,17 +6,17 @@ import (
 	"time"
 )
 
-type EventsModel struct{
+type EventsModel struct {
 	DB *sql.DB
 }
 
 type Event struct {
-	Id int `json:"id"`
-	OwnerId int `json:"ownerId" binding:"required"`
-	Name string `json:"name" binding:"required"`
+	Id          int    `json:"id"`
+	OwnerId     int    `json:"ownerId"`
+	Name        string `json:"name" binding:"required"`
 	Description string `json:"description" binding:"required,min=10"`
-	Date     string `json:"date" binding:"required,datetime=2006-01-02|datetime=2006-01-02T15:04:05Z07:00"`
-	Location string `json:"location" binding:"required,min=3"`
+	Date        string `json:"date" binding:"required,datetime=2006-01-02|datetime=2006-01-02T15:04:05Z07:00"`
+	Location    string `json:"location" binding:"required,min=3"`
 }
 
 func (m *EventsModel) Insert(event *Event) error {

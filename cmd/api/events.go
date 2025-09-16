@@ -9,6 +9,17 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// CreateEvent creates a new event
+//
+//	@Summary		Creates a new event
+//	@Description	Creates a new event
+//	@Tags			events
+//	@Accept			json
+//	@Produce		json
+//	@Param			event	body		database.Event	true	"Event"
+//	@Success		201		{object}	database.Event
+//	@Router			/api/v1/events [post]
+//	@Security		BearerAuth
 func (app *application) createEvent(c *gin.Context) {
 	var event database.Event
 
@@ -16,6 +27,9 @@ func (app *application) createEvent(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+
+	user := app.getUserFromContext(c)
+	event.OwnerId = user.Id
 
 	err := app.models.Events.Insert(&event)
 
@@ -28,6 +42,15 @@ func (app *application) createEvent(c *gin.Context) {
 	c.JSON(http.StatusCreated, event)
 }
 
+// GetAllEvents returns all events
+//
+//	@Summary		Returns all events
+//	@Description	Returns all events
+//	@Tags			events
+//	@Accept			json
+//	@Produce		json
+//	@Success		200		{object}	[]database.Event
+//	@Router			/api/v1/events [get]
 func (app *application) getAllEvents(c *gin.Context) {
 	events, err := app.models.Events.GetAll()
 
@@ -39,6 +62,16 @@ func (app *application) getAllEvents(c *gin.Context) {
 	c.JSON(http.StatusOK, events)
 }
 
+// GetEvent returns a single event
+//
+//	@Summary		Returns a single event
+//	@Description	Returns a single event
+//	@Tags			events
+//	@Accept			json
+//	@Produce		json
+//	@Param			id	path		int	true	"Event ID"
+//	@Success		200	{object}	database.Event
+//	@Router			/api/v1/events/{id} [get]
 func (app *application) getEvent(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
 
@@ -60,27 +93,48 @@ func (app *application) getEvent(c *gin.Context) {
 	c.JSON(http.StatusOK, event)
 }
 
+// UpdateEvent updates an existing event
+//
+//	@Summary		Updates an existing event
+//	@Description	Updates an existing event
+//	@Tags			events
+//	@Accept			json
+//	@Produce		json
+//	@Param			id	path		int	true	"Event ID"
+//	@Param			event	body		database.Event	true	"Event"
+//	@Success		200	{object}	database.Event
+//	@Router			/api/v1/events/{id} [put]
+//	@Security		BearerAuth
 func (app *application) updateEvent(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
-
 	if err != nil {
 		fmt.Println(err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid Event ID"})
 	}
 
+	user := app.getUserFromContext(c)
+
 	existingEvent, err := app.models.Events.Get(id)
 	if existingEvent == nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Event Not Found"})
+		return
+	}
+
+	if existingEvent.OwnerId != user.Id {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Not Allowed"})
+		return
 	}
 
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error":"Internal Server Error"})
+		return
 	}
 
 	updatedEvent := &database.Event{}
 
 	if err := c.ShouldBindJSON(updatedEvent); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error":err.Error()})
+		return
 	}
 
 	updatedEvent.Id = id
@@ -94,21 +148,55 @@ func (app *application) updateEvent(c *gin.Context) {
 
 }
 
+// DeleteEvent deletes an existing event
+//
+//	@Summary		Deletes an existing event
+//	@Description	Deletes an existing event
+//	@Tags			events
+//	@Accept			json
+//	@Produce		json
+//	@Param			id	path		int	true	"Event ID"
+//	@Success		204
+//	@Router			/api/v1/events/{id} [delete]
+//	@Security		BearerAuth
 func (app *application) deleteEvent(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
-
 	if err != nil {
 		fmt.Println(err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid event ID"})
+		return
+	}
+
+	user := app.getUserFromContext(c)
+	existingEvent, err := app.models.Events.Get(id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error":"Internal Server Error"})
+	}
+
+	if existingEvent.OwnerId != user.Id {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Not Allowed"})
+		return
 	}
 
 	if err := app.models.Events.Delete(id); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete event"})
+		return
 	}
 
 	c.JSON(http.StatusNoContent, nil)
 }
 
+// AddAttendeeToEvent adds an attendee to an event
+// @Summary		Adds an attendee to an event
+// @Description	Adds an attendee to an event
+// @Tags			attendees
+// @Accept			json
+// @Produce		json
+// @Param			id	path		int	true	"Event ID"
+// @Param			userId	path		int	true	"User ID"
+// @Success		201		{object}	database.Attendees
+// @Router			/api/v1/events/{id}/attendees/{userId} [post]
+// @Security		BearerAuth
 func (app *application) addAttendeeToEvent(c *gin.Context) {
 	// Extract event ID
 	eventId, err := strconv.Atoi(c.Param("id"))
@@ -158,6 +246,12 @@ func (app *application) addAttendeeToEvent(c *gin.Context) {
 	}
 	fmt.Printf("[DEBUG] Retrieved user: %+v\n", userToAdd)
 
+	user := app.getUserFromContext(c)
+	if event.OwnerId != user.Id {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Not Allowed"})
+		return
+	}
+
 	// Check if attendee already exists
 	existingAttendee, err := app.models.Attendees.GetByEventAndAttendee(event.Id, userToAdd.Id)
 	if err != nil {
@@ -189,7 +283,16 @@ func (app *application) addAttendeeToEvent(c *gin.Context) {
 	c.JSON(http.StatusCreated, attendee)
 }
 
-
+// GetAttendeesForEvent returns all attendees for a given event
+//
+//	@Summary		Returns all attendees for a given event
+//	@Description	Returns all attendees for a given event
+//	@Tags			attendees
+//	@Accept			json
+//	@Produce		json
+//	@Param			id	path		int	true	"Event ID"
+//	@Success		200	{object}	[]database.User
+//	@Router			/api/v1/events/{id}/attendees [get]
 func (app *application) getAttendeesForEvent(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
@@ -207,7 +310,17 @@ func (app *application) getAttendeesForEvent(c *gin.Context) {
 	c.JSON(http.StatusOK, users)
 }
 
-
+// DeleteAttendeeFromEvent deletes an attendee from an event
+// @Summary		Deletes an attendee from an event
+// @Description	Deletes an attendee from an event
+// @Tags			attendees
+// @Accept			json
+// @Produce		json
+// @Param			id	path		int	true	"Event ID"
+// @Param			userId	path		int	true	"User ID"
+// @Success		204
+// @Router			/api/v1/events/{id}/attendees/{userId} [delete]
+// @Security		BearerAuth
 func (app *application) deleteAttendeeFromEvent(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
@@ -218,6 +331,21 @@ func (app *application) deleteAttendeeFromEvent(c *gin.Context) {
 	userId, err := strconv.Atoi(c.Param("userId"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user id"})
+		return
+	}
+
+	event, err := app.models.Events.Get(id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error":"Internal Server Error"})
+		return
+	}
+	if event == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error":"Event not found"})
+	}
+
+	user:= app.getUserFromContext(c)
+	if event.OwnerId != user.Id {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Not Allowed"})
 		return
 	}
 
