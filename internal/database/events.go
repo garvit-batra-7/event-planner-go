@@ -14,18 +14,18 @@ type Event struct {
 	Id int `json:"id"`
 	OwnerId int `json:"ownerId" binding:"required"`
 	Name string `json:"name" binding:"required"`
-	Description string `json:"description" binding:"required, min=10"`
-	Date string `json:"date" binding:"required, datetime=2025-01-01"`
-	Location string `json:"location" binding:"required, min=3"`
+	Description string `json:"description" binding:"required,min=10"`
+	Date     string `json:"date" binding:"required,datetime=2006-01-02|datetime=2006-01-02T15:04:05Z07:00"`
+	Location string `json:"location" binding:"required,min=3"`
 }
 
 func (m *EventsModel) Insert(event *Event) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
-	query := "INSERT INTO events (ownerId, name, description, date, location) VALUES ($1, $2, $3, $4, $5)"
+	query := "INSERT INTO events (owner_id, name, description, date, location) VALUES ($1, $2, $3, $4, $5) RETURNING id"
 
-	return m.DB.QueryRowContext(ctx, query, event.Name, event.Name, event.Description, event.Date, event.Location).Scan(&event.Id)
+	return m.DB.QueryRowContext(ctx, query, event.OwnerId, event.Name, event.Description, event.Date, event.Location).Scan(&event.Id)
 }
 
 func (m *EventsModel) GetAll() ([]*Event, error) {
