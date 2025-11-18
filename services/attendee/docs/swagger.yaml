@@ -1,0 +1,148 @@
+basePath: /api/v1
+definitions:
+  attendee.Attendee:
+    properties:
+      eventId:
+        type: integer
+      id:
+        type: integer
+      userId:
+        type: integer
+    type: object
+  attendee.Event:
+    properties:
+      date:
+        type: string
+      description:
+        type: string
+      id:
+        type: integer
+      location:
+        type: string
+      name:
+        type: string
+      ownerId:
+        type: integer
+    type: object
+  attendee.User:
+    properties:
+      email:
+        type: string
+      id:
+        type: integer
+      name:
+        type: string
+    type: object
+info:
+  contact: {}
+  description: Manages event attendance. Allows users to join events, leave events,
+    and list attendees.
+  title: Attendee Service API
+  version: "1.0"
+paths:
+  /api/v1/attendees/{id}/events:
+    get:
+      consumes:
+      - application/json
+      description: Returns all events for a given attendee
+      parameters:
+      - description: User ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/attendee.Event'
+            type: array
+      summary: Returns all events for a given attendee
+      tags:
+      - attendees
+  /api/v1/events/{id}/attendees:
+    get:
+      consumes:
+      - application/json
+      description: Returns all attendees for a given event
+      parameters:
+      - description: Event ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/attendee.User'
+            type: array
+      summary: Returns all attendees for a given event
+      tags:
+      - attendees
+  /api/v1/events/{id}/attendees/{userId}:
+    delete:
+      consumes:
+      - application/json
+      description: Deletes an attendee from an event
+      parameters:
+      - description: Event ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: User ID
+        in: path
+        name: userId
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+      security:
+      - BearerAuth: []
+      summary: Deletes an attendee from an event
+      tags:
+      - attendees
+    post:
+      consumes:
+      - application/json
+      description: Adds an attendee to an event
+      parameters:
+      - description: Event ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: User ID
+        in: path
+        name: userId
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/attendee.Attendee'
+      security:
+      - BearerAuth: []
+      summary: Adds an attendee to an event
+      tags:
+      - attendees
+securityDefinitions:
+  BearerAuth:
+    description: Provide your JWT token with the prefix `Bearer `
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"

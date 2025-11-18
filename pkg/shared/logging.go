@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"strings"
 	"time"
 )
@@ -37,6 +38,7 @@ type LoggerConfig struct {
 var (
 	defaultLogger *Logger
 	logFile       *os.File
+	lastConfig    LoggerConfig
 )
 
 // InitLogger initializes the global logger with the provided configuration
@@ -55,7 +57,6 @@ func InitLogger(config LoggerConfig) error {
 		if err := os.MkdirAll(filepath.Dir(config.Output), 0755); err != nil {
 			return fmt.Errorf("failed to create log directory: %w", err)
 		}
-		
 		logFile, err = os.OpenFile(config.Output, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 		if err != nil {
 			return fmt.Errorf("failed to open log file: %w", err)
@@ -80,9 +81,10 @@ func InitLogger(config LoggerConfig) error {
 
 	// Create handler options
 	opts := &slog.HandlerOptions{
-		Level: slogLevel,
+		Level:     slogLevel,
+		AddSource: true, // <-- include file:line of caller
 		ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
-			// Customize timestamp format
+			// Uniform timestamp key + RFC3339 format
 			if a.Key == slog.TimeKey {
 				return slog.Attr{
 					Key:   "timestamp",
@@ -104,7 +106,7 @@ func InitLogger(config LoggerConfig) error {
 
 	// Create the logger
 	logger := slog.New(handler)
-	
+
 	// Add component context if provided
 	if config.Component != "" {
 		logger = logger.With("component", config.Component)
@@ -114,6 +116,7 @@ func InitLogger(config LoggerConfig) error {
 		Logger:    logger,
 		component: config.Component,
 	}
+	lastConfig = config
 
 	return nil
 }
@@ -149,45 +152,49 @@ func (l *Logger) WithContext(fields ...any) *Logger {
 	}
 }
 
-// Event-specific logging methods with structured context
+// WithStack attaches a stack trace to the log fields (useful for panics/errors)
+func (l *Logger) WithStack(fields ...any) []any {
+	stack := debug.Stack()
+	out := make([]any, 0, len(fields)+2)
+	out = append(out, fields...)
+	out = append(out, "stack", string(stack))
+	return out
+}
 
-// LogEvent logs general event-related activities
+// --- Event / User / API / DB convenience ---
+
 func (l *Logger) LogEvent(level LogLevel, eventID string, message string, fields ...any) {
 	args := append([]any{"event_id", eventID}, fields...)
 	l.logWithLevel(level, message, args...)
 }
 
-// LogUser logs user-related activities
 func (l *Logger) LogUser(level LogLevel, userID string, action string, message string, fields ...any) {
 	args := append([]any{
 		"user_id", userID,
-		"action", action,
+		"action",  action,
 	}, fields...)
 	l.logWithLevel(level, message, args...)
 }
 
-// LogAPI logs API-related activities
 func (l *Logger) LogAPI(level LogLevel, method, endpoint string, statusCode int, duration time.Duration, fields ...any) {
 	args := append([]any{
-		"method", method,
-		"endpoint", endpoint,
-		"status_code", statusCode,
-		"duration_ms", duration.Milliseconds(),
+		"method",       method,
+		"endpoint",     endpoint,
+		"status_code",  statusCode,
+		"duration_ms",  duration.Milliseconds(),
 	}, fields...)
 	l.logWithLevel(level, "API request processed", args...)
 }
 
-// LogDB logs database-related activities
 func (l *Logger) LogDB(level LogLevel, operation, table string, duration time.Duration, fields ...any) {
 	args := append([]any{
 		"db_operation", operation,
-		"table", table,
-		"duration_ms", duration.Milliseconds(),
+		"table",        table,
+		"duration_ms",  duration.Milliseconds(),
 	}, fields...)
 	l.logWithLevel(level, "Database operation", args...)
 }
 
-// LogError logs errors with additional context
 func (l *Logger) LogError(err error, message string, fields ...any) {
 	args := append([]any{"error", err.Error()}, fields...)
 	l.logWithLevel(LevelError, message, args...)
@@ -211,69 +218,34 @@ func (l *Logger) logWithLevel(level LogLevel, message string, fields ...any) {
 
 // Convenience methods for common log levels
 
-// Debug logs a debug message
-func (l *Logger) Debug(message string, fields ...any) {
-	l.Logger.Debug(message, fields...)
-}
-
-// Info logs an info message
-func (l *Logger) Info(message string, fields ...any) {
-	l.Logger.Info(message, fields...)
-}
-
-// Warn logs a warning message
-func (l *Logger) Warn(message string, fields ...any) {
-	l.Logger.Warn(message, fields...)
-}
-
-// Error logs an error message
-func (l *Logger) Error(message string, fields ...any) {
-	l.Logger.Error(message, fields...)
-}
+func (l *Logger) Debug(message string, fields ...any) { l.Logger.Debug(message, fields...) }
+func (l *Logger) Info(message string, fields ...any)  { l.Logger.Info(message, fields...) }
+func (l *Logger) Warn(message string, fields ...any)  { l.Logger.Warn(message, fields...) }
+func (l *Logger) Error(message string, fields ...any) { l.Logger.Error(message, fields...) }
 
 // Package-level convenience functions
 
-// Debug logs a debug message using the default logger
-func Debug(message string, fields ...any) {
-	GetLogger().Debug(message, fields...)
-}
+func Debug(message string, fields ...any) { GetLogger().Debug(message, fields...) }
+func Info(message string, fields ...any)  { GetLogger().Info(message, fields...) }
+func Warn(message string, fields ...any)  { GetLogger().Warn(message, fields...) }
+func Error(message string, fields ...any) { GetLogger().Error(message, fields...) }
 
-// Info logs an info message using the default logger
-func Info(message string, fields ...any) {
-	GetLogger().Info(message, fields...)
-}
-
-// Warn logs a warning message using the default logger
-func Warn(message string, fields ...any) {
-	GetLogger().Warn(message, fields...)
-}
-
-// Error logs an error message using the default logger
-func Error(message string, fields ...any) {
-	GetLogger().Error(message, fields...)
-}
-
-// LogEvent logs an event using the default logger
 func LogEvent(level LogLevel, eventID string, message string, fields ...any) {
 	GetLogger().LogEvent(level, eventID, message, fields...)
 }
 
-// LogUser logs user activity using the default logger
 func LogUser(level LogLevel, userID string, action string, message string, fields ...any) {
 	GetLogger().LogUser(level, userID, action, message, fields...)
 }
 
-// LogAPI logs API activity using the default logger
 func LogAPI(level LogLevel, method, endpoint string, statusCode int, duration time.Duration, fields ...any) {
 	GetLogger().LogAPI(level, method, endpoint, statusCode, duration, fields...)
 }
 
-// LogDB logs database activity using the default logger
 func LogDB(level LogLevel, operation, table string, duration time.Duration, fields ...any) {
 	GetLogger().LogDB(level, operation, table, duration, fields...)
 }
 
-// LogError logs an error using the default logger
 func LogError(err error, message string, fields ...any) {
 	GetLogger().LogError(err, message, fields...)
 }
@@ -291,15 +263,21 @@ func SetLogLevel(level LogLevel) error {
 	if defaultLogger == nil {
 		return fmt.Errorf("logger not initialized")
 	}
-
-	// This is a simplified approach - in production you might want to implement
-	// a more sophisticated level changing mechanism
-	config := LoggerConfig{
-		Level:     level,
-		Format:    "text", // You might want to store the current format
-		Output:    "stdout", // You might want to store the current output
-		Component: defaultLogger.component,
-	}
-
+	config := lastConfig
+	config.Level = level
 	return InitLogger(config)
 }
+
+// --- Gin panic capture integration ---
+
+// writerAdapter lets gin.RecoveryWithWriter write into slog with a stack trace.
+type writerAdapter struct{}
+
+func (writerAdapter) Write(p []byte) (int, error) {
+	// p already contains the stack produced by gin's recovery. Log it as an error:
+	GetLogger().Error("Recovered panic", "stack", string(p))
+	return len(p), nil
+}
+
+// GinRecoveryWriter returns a writer suitable for gin.RecoveryWithWriter().
+func GinRecoveryWriter() io.Writer { return writerAdapter{} }

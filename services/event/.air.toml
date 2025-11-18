@@ -1,0 +1,22 @@
+root = "."
+tmp_dir = "tmp"
+
+[build]
+cmd = "go build -o ./tmp/main ./cmd/api"
+bin = "./tmp/main"
+delay = 1000
+
+[log]
+time = true
+
+[screen]
+clear = true
+
+[watcher]
+include = [
+  "./cmd/**/*.go",
+  "./internal/**/*.go",
+  "../../pkg/shared/**/*.go",
+]
+
+exclude = ["tmp", "vendor"]
